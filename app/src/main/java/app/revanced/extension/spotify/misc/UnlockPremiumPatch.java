@@ -192,6 +192,27 @@ public final class UnlockPremiumPatch {
     }
 
     /**
+     * Universally checks the execution stack trace to determine if the caller
+     * is a network, serialization, or synchronization component.
+     * This prevents server-side bans by ensuring the spoofed data is never leaked back to Spotify.
+     */
+    public static boolean isNetworkSyncCall() {
+        StackTraceElement[] stackTrace = Thread.currentThread().getStackTrace();
+        for (StackTraceElement element : stackTrace) {
+            String className = element.getClassName().toLowerCase();
+            if (className.contains("grpc") ||
+                className.contains("network") ||
+                className.contains("sync") ||
+                className.contains("api") ||
+                className.contains("retrofit") ||
+                className.contains("http")) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
      * Returns a dynamically proxied list with ad sections removed.
      * The proxy implements exactly the interfaces of the original list.
      * This prevents detection through protobuf integrity checks, server-side
@@ -203,6 +224,11 @@ public final class UnlockPremiumPatch {
             FeatureTypeIdProvider<T> featureTypeExtractor,
             List<Integer> idsToRemove
     ) {
+        if (isNetworkSyncCall()) {
+            Logger.printDebug(() -> "Stack Trace Filter: Detected network sync. Providing original FREE sections to server.");
+            return sections;
+        }
+
         try {
             List<T> filteredData = new java.util.ArrayList<>(sections.size());
             for (T section : sections) {
@@ -238,8 +264,20 @@ public final class UnlockPremiumPatch {
                     new java.lang.reflect.InvocationHandler() {
                         @Override
                         public Object invoke(Object proxy, java.lang.reflect.Method method, Object[] args) throws Throwable {
-                            // Forward all calls to our filtered internal ArrayList
-                            return method.invoke(filteredData, args);
+                            try {
+                                // If the method belongs to the List/Collection interface,
+                                // route it to our filtered ArrayList proxy.
+                                if (method.getDeclaringClass().isAssignableFrom(List.class)) {
+                                    return method.invoke(filteredData, args);
+                                }
+                                
+                                // Otherwise, this is likely a Protobuf-specific method (like isModifiable()).
+                                // Route it to the original list to prevent IllegalArgumentExceptions
+                                // which flag the account for tampering to Spotify servers.
+                                return method.invoke(sections, args);
+                            } catch (java.lang.reflect.InvocationTargetException e) {
+                                throw e.getTargetException();
+                            }
                         }
                     }
             );
