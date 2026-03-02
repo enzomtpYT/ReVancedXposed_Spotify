@@ -205,7 +205,13 @@ public final class UnlockPremiumPatch {
                 className.contains("sync") ||
                 className.contains("api") ||
                 className.contains("retrofit") ||
-                className.contains("http")) {
+                className.contains("http") ||
+                className.contains("telemetry") ||
+                className.contains("analytics") ||
+                className.contains("metrics") ||
+                className.contains("event") ||
+                className.contains("logger") ||
+                className.contains("crashlytics")) {
                 return true;
             }
         }

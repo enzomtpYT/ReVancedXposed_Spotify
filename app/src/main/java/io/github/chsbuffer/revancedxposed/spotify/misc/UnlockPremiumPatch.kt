@@ -141,7 +141,7 @@ fun SpotifyHook.UnlockPremium() {
             
             // Invoke the fallback Function with a simulated exception
             // This generates the mock FetchMessageResponse exactly as Spotify intended
-            val mockException = Exception("Blocked ad request")
+            val mockException = java.net.UnknownHostException("spclient.wg.spotify.com")
             val fallbackResponse = onErrorFunction.javaClass.methods
                 .first { it.name == "apply" && it.parameterTypes.size == 1 }
                 .invoke(onErrorFunction, mockException)
