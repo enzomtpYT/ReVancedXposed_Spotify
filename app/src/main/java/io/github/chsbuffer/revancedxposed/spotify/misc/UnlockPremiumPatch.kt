@@ -17,12 +17,21 @@ import java.lang.reflect.Field
 @Suppress("UNCHECKED_CAST")
 fun SpotifyHook.UnlockPremium() {
     // Override the attributes map in the getter method's return value.
-    // Creates a defensive copy with cloned attribute objects, leaving the original
-    // protobuf data untouched to prevent server-side detection via state serialization.
+    // Creates a defensive copy with cloned attribute objects.
+    // Importantly, uses Stack Trace Filtering (Client/Server Isolation):
+    // If the caller is a network/sync process, it receives the genuine Free state.
+    // If the caller is the local app (UI/Player), it receives the spoofed Premium state.
     runCatching {
         ::productStateProtoFingerprint.hookMethod {
             after { param ->
                 val result = param.result as? Map<String, *> ?: return@after
+                
+                if (UnlockPremiumPatch.isNetworkSyncCall()) {
+                    Logger.printDebug { "Stack Trace Filter: Detected network sync. Providing original FREE state to server." }
+                    return@after // Provide the original state to the server to prevent bans
+                }
+                
+                // Provide the spoofed PREMIUM state to the local application
                 param.result = UnlockPremiumPatch.createOverriddenAttributesMap(result)
             }
         }
@@ -126,8 +135,21 @@ fun SpotifyHook.UnlockPremium() {
 
         override fun afterHookedMethod(param: MethodHookParam) {
             if (!param.result.javaClass.name.endsWith("SingleOnErrorReturn")) return
-            val justError = justMethod.invoke(null, onErrorField.get(param.result))
-            param.result = justError
+            
+            // Extract the fallback Function from the SingleOnErrorReturn object
+            val onErrorFunction = onErrorField.get(param.result)
+            
+            // Invoke the fallback Function with a simulated exception
+            // This generates the mock FetchMessageResponse exactly as Spotify intended
+            val mockException = java.net.UnknownHostException("spclient.wg.spotify.com")
+            val fallbackResponse = onErrorFunction.javaClass.methods
+                .first { it.name == "apply" && it.parameterTypes.size == 1 }
+                .invoke(onErrorFunction, mockException)
+                
+            // Wrap the mock response in Single.just()
+            val justErrorSingle = justMethod.invoke(null, fallbackResponse)
+            
+            param.result = justErrorSingle
         }
     }
 

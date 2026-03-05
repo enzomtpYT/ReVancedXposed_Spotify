@@ -1,32 +1,8 @@
 <div align="center">
-  <h1>ReVanced Xposed Spotify</h1>
+  <h1>ReVanced Xposed Spotify [Test Next-Gen Patch]</h1>
   <br>
 </div>
 
-# RVX-Spotify (Maintained Fork)
-
-> ⚠️ **Active community-maintained fork**
-
-This repository is an actively maintained fork of the original  
-[chsbuffer/ReVancedXposed_Spotify](https://github.com/chsbuffer/ReVancedXposed_Spotify),  
-which was archived and is now read-only.
-
-The goal of this fork is to:
-- Fix bugs and compatibility issues
-- Keep the project working with newer dependencies
-- Improve stability and maintainability
-- Continue development where the original repository stopped
-
-All credit for the original implementation goes to the original author and contributors.
-
-This fork remains licensed under **GPL-3.0**, in accordance with the original project license.
-
-**ReVanced LSPosed module by ChsBuffer, just for Spotify.**  
->[!IMPORTANT]  
-> - This is **NOT an official ReVanced project**, do not ask the ReVanced developers for help.
-> - **Root access** is strictly **required** to use this module!
-
----
 ### The Impact of Server-Side Consistency Checks
 
 Starting from late January 2026, the server has implemented a new verification logic 
@@ -45,34 +21,17 @@ the server will immediately forcibly terminate the session.
 Remember: if you are not paying for the product, **you** are the product.
 
 ---
-### Regarding alleged “new working Spotify mods”:
+### Why Previous Mods Failed (The Auto-Logout Loop)
 
-Recent claims that _Nibrut, Obito, AndroForever and Shizuku_ provide functioning Spotify mods are incorrect.  
-Their mod merely applies _Rootless Xposed Framework_ and _generic signature bypass patcher_ together with this module,  
-e.g. Mochi Cloner, App Cloner, LSPatch, NPatch, HKP, MT Manager, NP Manager.  
-However, it **does not** address or bypass the actual mechanisms responsible for detecting and blocking modified clients.    
-ReVanced Xposed has nothing to do with the bypass mechanisms.  
-  
-These mods work for a few days until a Spotify app update is released, then Spotify blacklists users of these modded apps on old versions of the client from the server.  
-  
-Before ReVanced paused patches for Spotify for legal reason,  
-they released a working test version that still works to this day.  
-There is something you need to know in order to use it, so find it on the xManager Discord Server and read the instructions.  
+With the new server-side checks, older bypass methods are now heavily flagged by Spotify's anti-cheat telemetry, resulting in immediate session terminations.
 
-## Patches
+#### 1. The Initial Project (`ReVancedXposed_Spotify-main`)
+**Method used:** In-Place Mutation.
+* **How it works:** The code used reflection to force the Protobuf list returned by Spotify to become modifiable (`isMutable = true`), then physically removed the ad elements.
+* **Why it fails (Detection):** Spotify uses the Protobuf format to communicate with its servers. By directly modifying the original object, when the Spotify app performs a state synchronization with the server (serialization), the server receives a tampered object. The server immediately detects the fraud and revokes the session (Logout).
 
-### Spotify
-- Unlock Spotify Premium
-- Sanitize sharing links
-
-## Downloads
-- **Release build**: [Download](https://github.com/simoabid/RVX-Spotify/releases/latest)
-
-> [!NOTE]  
-> The package name and signature of this build are different every day. You don't have to reinstall it every day.
-
-## ⭐ Credits
-
-[chsbuffer/ReVancedXposed_Spotify](https://github.com/chsbuffer/ReVancedXposed_Spotify): All credit for the original implementation goes to the original author.
-[DexKit](https://luckypray.org/DexKit/en/): a high-performance dex runtime parsing library.  
-[ReVanced](https://revanced.app): Continuing the legacy of Vanced at [revanced.app](https://revanced.app)  
+#### 2. Fork 1 (`RVX-Spotify`)
+**Method used:** Replacement by a standard object (`ArrayList`).
+* **How it works:** To avoid mutating the original Protobuf object, this version replaced the entire Protobuf list with a plain `java.util.ArrayList` containing only the ad-free elements.
+* **Why it fails (Detection):** A standard `ArrayList` does not possess the specific methods and interfaces (like `isModifiable()`) of a real Protobuf structure. When Spotify's internal code later interacted with this fake list and called its specialized functions, the app silently crashed in the background (`ClassCastException` or `IllegalArgumentException`). 
+* **Consequence:** Spotify's Telemetry/Crash Analytics module caught this impossible error. The server received a crash report indicating that a core system class was tampered with. The account was flagged and logged out.
